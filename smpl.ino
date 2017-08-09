@@ -19,7 +19,9 @@ void setup() {
 }
 
 float pos[6];
-bool relative_movement;
+int linear_interpolation = false; // unset by G0; set by G1 TODO currently unused
+bool metric_units = true; // unset by G20; set by G21 TODO currently unused
+bool incremental_movement = false; // unset by G90; set by G91
 
 void loop() {
   char line[64];
@@ -33,6 +35,7 @@ void loop() {
   int i = 0;
   int found = 0;
   float value[WORD_S+1];
+  int non_modal_gcode = -1;
   while (i<_l) {
     char c = line[i++];
     if (c==' ') continue;
@@ -45,28 +48,29 @@ void loop() {
     }
     bitSet(found, w);
     value[w] = readFloat(line, &i);
-  }
-
-  if(bitRead(found, WORD_G) && value[WORD_G] == 0) {
-    float feedrate = bitRead(found, WORD_F) ? value[WORD_F] : 100; //TODO define default feedrate
-    for(unsigned char i = 0; i < 6; i = i + 1) {
-      float d = 0;
-      if (relative_movement) {
-        d = value[i]*bitRead(found, i);
-      } else {
-        d = bitRead(found, i) ? value[i] - pos[i] : 0;
+    // multiple G codes are allowed per line (one per modal group)
+    // relevant modes will be set here
+    if (w == WORD_G) {
+      switch((int)value[w]) {
+        case 0: linear_interpolation = false; break;
+        case 1: linear_interpolation = true; break;
+        case 20: metric_units = false; break;
+        case 21: metric_units = true; break;
+        case 90: incremental_movement = false; break;
+        case 91: incremental_movement = true; break;
+        case 4:
+        case 28:
+        case 92: non_modal_gcode = value[w]; break;
       }
-      if (d) move_axis(i, abs(d), d<0, feedrate);
-      pos[i] += d;
     }
   }
 
-  if(bitRead(found, WORD_G) && value[WORD_G] == 4) {
+  if(non_modal_gcode == 4) {
     delay(value[WORD_P]); // TODO P not set
     Serial.println("Z_move_comp");
   }
 
-  if(bitRead(found, WORD_G) && value[WORD_G] == 28) {
+  if(non_modal_gcode == 28) {
     bool all = !bitRead(found, WORD_A) && !bitRead(found, WORD_B) && !bitRead(found, WORD_C) && !bitRead(found, WORD_X) && !bitRead(found, WORD_Y) && !bitRead(found, WORD_Z);
     if (all) {
       Serial.println("Homing all axes");
@@ -78,11 +82,23 @@ void loop() {
     }
   }
 
-  if(bitRead(found, WORD_G) && value[WORD_G] == 90) relative_movement = false;
-  if(bitRead(found, WORD_G) && value[WORD_G] == 91) relative_movement = true;
-  if(bitRead(found, WORD_G) && value[WORD_G] == 92) { // G92 - set position
+  if(non_modal_gcode == 92) { // G92 - set position
     for(unsigned char i = 0; i < 6; i = i + 1) {
       pos[i] = bitRead(found, i) ? value[i] : pos[i];
+    }
+  }
+
+  if(non_modal_gcode != 28 && non_modal_gcode != 92) { // no code that uses axis words -> movement
+    float feedrate = bitRead(found, WORD_F) ? value[WORD_F] : 100; //TODO define default feedrate
+    for(unsigned char i = 0; i < 6; i = i + 1) {
+      float d = 0;
+      if (incremental_movement) {
+        d = value[i]*bitRead(found, i);
+      } else {
+        d = bitRead(found, i) ? value[i] - pos[i] : 0;
+      }
+      if (d) move_axis(i, abs(d), d<0, feedrate);
+      pos[i] += d;
     }
   }
 
@@ -127,7 +143,7 @@ void loop() {
 }
 
 void home(char axis) {
-  if (!axes[i].used || axes[axis].home.pin == UNDEFINED_PIN) return;
+  if (!axes[axis].used || axes[axis].home.pin == UNDEFINED_PIN) return;
   int pin = axes[axis].home.pin;
   bool inverted = axes[axis].home.inverted;
   float step = axes[axis].home.step;
@@ -145,7 +161,7 @@ void home(char axis) {
 }
 
 void move_axis(char axis, float units, bool dir, float feedrate) {
-  if (!axes[i].used) return;
+  if (!axes[axis].used) return;
 
   int dir_pin = axes[axis].stepper.dir_pin;
   bool dir_inverted = axes[axis].stepper.dir_inverted;
@@ -176,6 +192,7 @@ float readFloat(char *line, int *i) {
   float fraction = 1;
   bool negative = false;
   char c = line[*i];
+  if (c == '+') { *i = *i+1; }
   if (c == '-') {
     negative = true;
     *i = *i+1;
