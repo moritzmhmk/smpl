@@ -1,10 +1,10 @@
 #include "settings.h"
+#include "gcode.h"
 
 struct axis axes[6];
 
 void setup() {
   load_settings(axes);
-
   Serial.begin(9600);
   Serial.println("START");
   Serial.println(axes[AXIS_A].limit.pin);
@@ -18,112 +18,82 @@ void setup() {
   }
 }
 
-float pos[6];
-int linear_interpolation = false; // unset by G0; set by G1 TODO currently unused
-bool metric_units = true; // unset by G20; set by G21 TODO currently unused
-bool incremental_movement = false; // unset by G90; set by G91
+struct state state;
+struct gcode_block block;
 
 void loop() {
   char line[64];
   int _l = Serial.readBytesUntil('\n', line, 64);
 
+  line[_l] = '\0';
   if (_l) {
-    line[_l] = '\0';
+    Serial.print("[RECEIVED] ");
     Serial.println(line);
   }
 
-  int i = 0;
-  int found = 0;
-  float value[WORD_S+1];
-  int non_modal_gcode = -1;
-  while (i<_l) {
-    char c = line[i++];
-    if (c==' ') continue;
-    int w = toWordCode(c);
-    if (w==-1) {
-      Serial.print("Character \"");
-      Serial.print(c);
-      Serial.println("\" ignored");
-      continue;
-    }
-    bitSet(found, w);
-    value[w] = readFloat(line, &i);
-    // multiple G codes are allowed per line (one per modal group)
-    // relevant modes will be set here
-    if (w == WORD_G) {
-      switch((int)value[w]) {
-        case 0: linear_interpolation = false; break;
-        case 1: linear_interpolation = true; break;
-        case 20: metric_units = false; break;
-        case 21: metric_units = true; break;
-        case 90: incremental_movement = false; break;
-        case 91: incremental_movement = true; break;
-        case 4:
-        case 28:
-        case 92: non_modal_gcode = value[w]; break;
-      }
-    }
-  }
+  //reset block
+  block = {0};
+  parse(line, &state, &block);
 
-  if(non_modal_gcode == 4) {
-    delay(value[WORD_P]); // TODO P not set
+  if(block.g == 4) {
+    delay(block.values[WORD_P]); // TODO P not set
     Serial.println("Z_move_comp");
   }
 
-  if(non_modal_gcode == 28) {
-    bool all = !bitRead(found, WORD_A) && !bitRead(found, WORD_B) && !bitRead(found, WORD_C) && !bitRead(found, WORD_X) && !bitRead(found, WORD_Y) && !bitRead(found, WORD_Z);
+  if(block.g == 28) {
+    bool all = !bitRead(block.words, WORD_A) && !bitRead(block.words, WORD_B) && !bitRead(block.words, WORD_C) && !bitRead(block.words, WORD_X) && !bitRead(block.words, WORD_Y) && !bitRead(block.words, WORD_Z);
     if (all) {
       Serial.println("Homing all axes");
     } else {
       Serial.println("Homing selected axes");
     }
     for(unsigned char i = 0; i < 6; i = i + 1) {
-      if (all || bitRead(found, i)) home(i);
+      if (all || bitRead(block.words, i)) home(i);
     }
   }
 
-  if(non_modal_gcode == 92) { // G92 - set position
+  if(block.g == 92) { // G92 - set position
     for(unsigned char i = 0; i < 6; i = i + 1) {
-      pos[i] = bitRead(found, i) ? value[i] : pos[i];
+      state.position[i] = bitRead(block.words, i) ? block.values[i] : state.position[i];
     }
   }
 
-  if(non_modal_gcode != 28 && non_modal_gcode != 92) { // no code that uses axis words -> movement
-    float feedrate = bitRead(found, WORD_F) ? value[WORD_F] : 100; //TODO define default feedrate
+  if(!block.axis_words_used) { // no non modal gcode uses axis words -> movement
+    float feedrate = bitRead(block.words, WORD_F) ? block.values[WORD_F] : 100; //TODO define default feedrate
     for(unsigned char i = 0; i < 6; i = i + 1) {
       float d = 0;
-      if (incremental_movement) {
-        d = value[i]*bitRead(found, i);
+      if (state.modal.distance_mode == DISTANCE_MODE_INCREMENTAL) {
+        d = block.values[i]*bitRead(block.words, i);
       } else {
-        d = bitRead(found, i) ? value[i] - pos[i] : 0;
+        d = bitRead(block.words, i) ? block.values[i] - state.position[i] : 0;
       }
       if (d) move_axis(i, abs(d), d<0, feedrate);
-      pos[i] += d;
+      state.position[i] += d;
     }
   }
 
-  if(bitRead(found, WORD_M) && value[WORD_M] == 17) { // enable steppers
+  if(block.m == 17) { // enable steppers
     for(unsigned char i = 0; i < 6; i = i + 1) {
       digitalWrite(axes[i].stepper.en_pin, LOW);
     }
   }
-  if(bitRead(found, WORD_M) && value[WORD_M] == 18) { // disable steppers
+  if(block.m == 18) { // disable steppers
     for(unsigned char i = 0; i < 6; i = i + 1) {
       digitalWrite(axes[i].stepper.en_pin, HIGH);
     }
   }
 
-  if(bitRead(found, WORD_M) && value[WORD_M] == 114) {
+  if(block.m == 114) {
     for(unsigned char i = 0; i < 6; i = i + 1) {
       Serial.print(axes[i].id);
       Serial.print(":");
-      Serial.print(pos[i]);
+      Serial.print(state.position[i]);
       Serial.print(" ");
     }
     Serial.println();
   }
 
-  if(bitRead(found, WORD_M) && value[WORD_M] == 119) {
+  if(block.m == 119) {
     Serial.print("limit: ");
     for(unsigned char i = 0; i < 6; i = i + 1) {
       if (!axes[i].used || axes[i].limit.pin == UNDEFINED_PIN) continue;
@@ -162,6 +132,7 @@ void home(char axis) {
 
 void move_axis(char axis, float units, bool dir, float feedrate) {
   if (!axes[axis].used) return;
+  Serial.print("[INFO] moving axis "); Serial.print(axes[axis].id); Serial.print(" "); Serial.print(units); Serial.println("units.");
 
   int dir_pin = axes[axis].stepper.dir_pin;
   bool dir_inverted = axes[axis].stepper.dir_inverted;
@@ -184,77 +155,5 @@ void move_axis(char axis, float units, bool dir, float feedrate) {
       digitalWrite(step_pin, LOW);
       delay(60 * 500 / (feedrate * steps_per_unit));
     }
-  }
-}
-
-float readFloat(char *line, int *i) {
-  float f = 0;
-  float fraction = 1;
-  bool negative = false;
-  char c = line[*i];
-  if (c == '+') { *i = *i+1; }
-  if (c == '-') {
-    negative = true;
-    *i = *i+1;
-  }
-  while (c != '\0') {
-   c = line[*i];
-   if(c>='0' && c<='9') {
-    if (fraction == 1) {
-      f *= 10;
-    }
-    f += (c - '0') * fraction;
-    if (fraction < 1) {
-      fraction /= 10;
-    }
-   } else if (c == '.' && fraction == 1) {
-    fraction = 0.1;
-   } else {
-    return negative ? -f : f;
-   }
-   *i = *i+1;
-  }
-}
-
-int toWordCode(char c) {
-  switch (c) {
-    case 'a':
-    case 'A':
-      return WORD_A;
-    case 'b':
-    case 'B':
-      return WORD_B;
-    case 'c':
-    case 'C':
-      return WORD_C;
-    case 'f':
-    case 'F':
-      return WORD_F;
-    case 'g':
-    case 'G':
-      return WORD_G;
-    case 'm':
-    case 'M':
-      return WORD_M;
-    case 'n':
-    case 'N':
-      return WORD_N;
-    case 'p':
-    case 'P':
-      return WORD_P;
-    case 's':
-    case 'S':
-      return WORD_S;
-    case 'x':
-    case 'X':
-      return WORD_X;
-    case 'y':
-    case 'Y':
-      return WORD_Y;
-    case 'z':
-    case 'Z':
-      return WORD_Z;
-     default:
-      return -1;
   }
 }
