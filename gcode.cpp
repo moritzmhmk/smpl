@@ -1,21 +1,19 @@
 #include "gcode.h"
 #include "Arduino.h"
 
-int toWordCode(char c);
+int toWordCode(char **c);
 float readFloat(char **c);
 
 void parse(char *c, struct state *state, struct gcode_block *block) {
   while (*c != '\0') {
     while (*c == ' ') ++c;
-    int w = toWordCode(*c);
+    int w = readWordCode(&c);
     if (w==-1) {
       Serial.print("[WARNING] unknown word letter \"");
       Serial.print(*c);
       Serial.println("\" ignored!");
-      c++;
       continue;
     }
-    c++;
     float v = readFloat(&c);
     if (w == WORD_G) {
       switch((int)v) {
@@ -43,8 +41,8 @@ void parse(char *c, struct state *state, struct gcode_block *block) {
   }
 }
 
-int toWordCode(char c) {
-  switch (c) {
+int readWordCode(char **c) {
+  switch (*(*c++)) {
     case 'a':
     case 'A':
       return WORD_A;
