@@ -1,7 +1,7 @@
 #include "gcode.h"
 #include "Arduino.h"
 
-int toWordCode(char **c);
+int readWordCode(char **c);
 float readFloat(char **c);
 
 void parse(char *c, struct state *state, struct gcode_block *block) {
