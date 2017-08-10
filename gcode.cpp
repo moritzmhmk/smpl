@@ -6,11 +6,10 @@ float readFloat(char **c);
 
 void parse(char *c, struct state *state, struct gcode_block *block) {
   while (*c != '\0') {
-    while (*c == ' ') ++c;
     int w = readWordCode(&c);
     if (w==-1) {
       Serial.print("[WARNING] unknown word letter \"");
-      Serial.print(*c);
+      Serial.print(*(c-1));
       Serial.println("\" ignored!");
       continue;
     }
@@ -42,7 +41,8 @@ void parse(char *c, struct state *state, struct gcode_block *block) {
 }
 
 int readWordCode(char **c) {
-  switch (*(*c++)) {
+  while (**c == ' ') ++*c; // skip spaces
+  switch (*(*c)++) {
     case 'a':
     case 'A':
       return WORD_A;
@@ -88,12 +88,14 @@ float readFloat(char **c) {
   float f = 0;
   float fraction = 1;
   bool negative = false;
+  while (**c == ' ') ++*c; // skip spaces
   if (**c == '+') { ++*c; }
   if (**c == '-') {
     negative = true;
     ++*c;
   }
   while (**c != '\0') {
+    while (**c == ' ') ++*c; // skip spaces
     if(**c>='0' && **c<='9') {
       if (fraction == 1) {
         f *= 10;
