@@ -31,3 +31,4 @@ smpl only supports a tiny subset of g code (grbl, Marlin, etc. support a way lar
 * M18 (disable steppers)
 * M114 (print current positions)
 * M119 (print current limit/home switch states)
+
