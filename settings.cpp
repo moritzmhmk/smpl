@@ -10,7 +10,7 @@ void load_settings(struct axis *axes) {
   axes[AXIS_A].limit.pin = UNDEFINED_PIN;
   axes[AXIS_A].limit.inverted;
   axes[AXIS_A].home.pin = 9;
-  axes[AXIS_A].home.inverted = false;
+  axes[AXIS_A].home.inverted = true;
   axes[AXIS_A].home.step = 1;
   axes[AXIS_A].home.seekrate = 2000;
   axes[AXIS_A].home.feedrate = 500;
@@ -40,7 +40,7 @@ void load_settings(struct axis *axes) {
   axes[AXIS_Z].limit.pin = 11;
   axes[AXIS_Z].limit.inverted = false;
   axes[AXIS_Z].home.pin = 10;
-  axes[AXIS_Z].home.inverted = true;
+  axes[AXIS_Z].home.inverted = false;
   axes[AXIS_Z].home.step = 1;
   axes[AXIS_Z].home.seekrate = 400;
   axes[AXIS_Z].home.feedrate = 200;
