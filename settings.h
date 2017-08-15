@@ -2,6 +2,11 @@
 #define SETTINGS_H
 #include "gcode.h"
 
+struct trigger {
+  int pin;
+  bool inverted;
+};
+
 struct axis {
   char id;
   bool used;
@@ -11,19 +16,14 @@ struct axis {
     bool dir_inverted;
     int step_pin;
     int steps_per_unit;
-  }stepper;
-  struct limit {
-    int pin;
-    bool inverted;
-  }limit;
-  struct home {
-    int pin;
-    bool inverted;
+  } stepper;
+  struct trigger limit;
+  struct home: trigger {
     int step;
     int seekrate;
     int feedrate;
     int dir;
-  }home;
+  } home;
 };
 
 void load_settings(struct axis *axes);

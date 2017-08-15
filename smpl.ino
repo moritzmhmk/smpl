@@ -98,36 +98,38 @@ void loop() {
     for(unsigned char i = 0; i < 6; i = i + 1) {
       if (!axes[i].used || axes[i].limit.pin == UNDEFINED_PIN) continue;
       Serial.print(axes[i].id);
-      Serial.print(digitalRead(axes[i].limit.pin));
+      Serial.print(isTriggered(axes[i].limit));
       Serial.print(" ");
     }
     Serial.print("; home: ");
     for(unsigned char i = 0; i < 6; i = i + 1) {
       if (!axes[i].used || axes[i].home.pin == UNDEFINED_PIN) continue;
       Serial.print(axes[i].id);
-      Serial.print(digitalRead(axes[i].home.pin));
+      Serial.print(isTriggered(axes[i].home));
       Serial.print(" ");
     }
     Serial.println();
   }
 }
 
+bool isTriggered(struct trigger t) {
+  return t.pin != UNDEFINED_PIN && digitalRead(t.pin) ^ t.inverted;
+}
+
 void home(char axis) {
   if (!axes[axis].used || axes[axis].home.pin == UNDEFINED_PIN) return;
-  int pin = axes[axis].home.pin;
-  bool inverted = axes[axis].home.inverted;
   float step = axes[axis].home.step;
   float seekrate = axes[axis].home.seekrate;
   float feedrate = axes[axis].home.feedrate;
   int dir = axes[axis].home.dir;
   Serial.println("Search switch:");
-  while (digitalRead(pin) ^ inverted) move_axis(axis, step, dir, seekrate);
+  while (isTriggered(axes[axis].home)) move_axis(axis, step, dir, seekrate);
   Serial.println("Retract from switch (slow):");
-  while (!digitalRead(pin) ^ inverted) move_axis(axis, step, !dir, feedrate);
+  while (!isTriggered(axes[axis].home)) move_axis(axis, step, !dir, feedrate);
   Serial.println("Retract further:");
   move_axis(axis, 2 * step, !dir, seekrate);
   Serial.println("Search switch (slow):");
-  while (digitalRead(pin) ^ inverted) move_axis(axis, step/2, dir, feedrate);
+  while (isTriggered(axes[axis].home)) move_axis(axis, step/2, dir, feedrate);
 }
 
 void move_axis(char axis, float units, bool dir, float feedrate) {
@@ -139,14 +141,11 @@ void move_axis(char axis, float units, bool dir, float feedrate) {
   int step_pin = axes[axis].stepper.step_pin;
   float steps_per_unit = axes[axis].stepper.steps_per_unit;
 
-  int limit_pin = axes[axis].limit.pin;
-  bool limit_inverted = axes[axis].limit.inverted;
-
   if (dir_pin!=UNDEFINED_PIN) {
     int steps = round(units * steps_per_unit);
     digitalWrite(dir_pin, dir ^ dir_inverted);
     for (int i=0; i<steps; i++) {
-      if (limit_pin != UNDEFINED_PIN && digitalRead(limit_pin) ^ limit_inverted) {
+      if (isTriggered(axes[axis].limit)) {
         Serial.println("[ERROR] limit switch hit!"); // TODO how to handle properly?
         return;
       }
