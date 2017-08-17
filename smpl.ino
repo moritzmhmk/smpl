@@ -11,6 +11,7 @@ void setup() {
 
   for(unsigned char i = 0; i < 6; i = i + 1) {
     pinMode(axes[i].stepper.en_pin, OUTPUT);
+    digitalWrite(axes[i].stepper.en_pin, HIGH); // stepper disabled
     pinMode(axes[i].stepper.dir_pin, OUTPUT);
     pinMode(axes[i].stepper.step_pin, OUTPUT);
     pinMode(axes[i].limit.pin, INPUT_PULLUP);
@@ -123,16 +124,18 @@ void home(char axis) {
   float feedrate = axes[axis].home.feedrate;
   int dir = axes[axis].home.dir;
   Serial.println("Search switch:");
-  while (isTriggered(axes[axis].home)) move_axis(axis, step, dir, seekrate);
+  while (!isTriggered(axes[axis].home)) move_axis(axis, step, dir, seekrate);
   Serial.println("Retract from switch (slow):");
-  while (!isTriggered(axes[axis].home)) move_axis(axis, step, !dir, feedrate);
+  while (isTriggered(axes[axis].home)) move_axis(axis, step, !dir, feedrate);
   Serial.println("Retract further:");
   move_axis(axis, 2 * step, !dir, seekrate);
   Serial.println("Search switch (slow):");
-  while (isTriggered(axes[axis].home)) move_axis(axis, step/2, dir, feedrate);
+  while (!isTriggered(axes[axis].home)) move_axis(axis, step/2, dir, feedrate);
 }
 
 void move_axis(char axis, float units, bool dir, float feedrate) {
+  bool en_state = digitalRead(axes[axis].stepper.en_pin);
+  digitalWrite(axes[axis].stepper.en_pin, LOW); // enable the stepper
   if (!axes[axis].used) return;
   Serial.print("[INFO] moving axis "); Serial.print(axes[axis].id); Serial.print(" "); Serial.print(units); Serial.println("units.");
 
@@ -155,4 +158,5 @@ void move_axis(char axis, float units, bool dir, float feedrate) {
       delay(60 * 500 / (feedrate * steps_per_unit));
     }
   }
+  digitalWrite(axes[axis].stepper.en_pin, en_state);
 }

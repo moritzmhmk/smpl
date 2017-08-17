@@ -22,7 +22,7 @@ struct axis {
     int step;
     int seekrate;
     int feedrate;
-    int dir;
+    bool dir;
   } home;
 };
 

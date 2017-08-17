@@ -6,7 +6,7 @@ void load_settings(struct axis *axes) {
   axes[AXIS_A].stepper.dir_pin = 5;
   axes[AXIS_A].stepper.dir_inverted = true;
   axes[AXIS_A].stepper.step_pin = 2;
-  axes[AXIS_A].stepper.steps_per_unit = 16*200;
+  axes[AXIS_A].stepper.steps_per_unit = 16*200 / 360;
   axes[AXIS_A].limit.pin = UNDEFINED_PIN;
   axes[AXIS_A].limit.inverted;
   axes[AXIS_A].home.pin = 9;
@@ -21,7 +21,7 @@ void load_settings(struct axis *axes) {
   axes[AXIS_B].stepper.dir_pin = 6;
   axes[AXIS_B].stepper.dir_inverted = false;
   axes[AXIS_B].stepper.step_pin = 3;
-  axes[AXIS_B].stepper.steps_per_unit = 16*200;
+  axes[AXIS_B].stepper.steps_per_unit = 16*200 / 360;
   axes[AXIS_B].limit.pin = UNDEFINED_PIN;
   axes[AXIS_B].limit.inverted;
   axes[AXIS_B].home.pin = UNDEFINED_PIN;
@@ -44,7 +44,7 @@ void load_settings(struct axis *axes) {
   axes[AXIS_Z].home.step = 1;
   axes[AXIS_Z].home.seekrate = 400;
   axes[AXIS_Z].home.feedrate = 200;
-  axes[AXIS_Z].home.dir = -1;
+  axes[AXIS_Z].home.dir = 1;
 
   axes[AXIS_A].id = 'A';
   axes[AXIS_B].id = 'B';
