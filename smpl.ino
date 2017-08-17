@@ -2,20 +2,40 @@
 #include "gcode.h"
 
 struct axis axes[6];
+bool pinInUse[20];
 
 void setup() {
   load_settings(axes);
   Serial.begin(9600);
   Serial.println("START");
-  Serial.println(axes[AXIS_A].limit.pin);
 
+  pinInUse[0] = true; // Serial RX
+  pinInUse[1] = true; // Serial TX
+  pinInUse[18] = true; // A4 - I2C SDA
+  pinInUse[19] = true; // A5 - I2C SCL
+  
   for(unsigned char i = 0; i < 6; i = i + 1) {
-    pinMode(axes[i].stepper.en_pin, OUTPUT);
-    digitalWrite(axes[i].stepper.en_pin, HIGH); // stepper disabled
-    pinMode(axes[i].stepper.dir_pin, OUTPUT);
-    pinMode(axes[i].stepper.step_pin, OUTPUT);
-    pinMode(axes[i].limit.pin, INPUT_PULLUP);
-    pinMode(axes[i].home.pin, INPUT_PULLUP);
+    if (axes[i].stepper.en_pin != UNDEFINED_PIN) {
+      pinInUse[axes[i].stepper.en_pin] = true;
+      pinMode(axes[i].stepper.en_pin, OUTPUT);
+      digitalWrite(axes[i].stepper.en_pin, HIGH); // stepper disabled
+    }
+    if (axes[i].stepper.dir_pin != UNDEFINED_PIN) {
+      pinInUse[axes[i].stepper.dir_pin] = true;
+      pinMode(axes[i].stepper.dir_pin, OUTPUT);
+    }
+    if (axes[i].stepper.step_pin != UNDEFINED_PIN) {
+      pinInUse[axes[i].stepper.step_pin] = true;
+      pinMode(axes[i].stepper.step_pin, OUTPUT);
+    }
+    if (axes[i].limit.pin != UNDEFINED_PIN) {
+      pinInUse[axes[i].limit.pin] = true;
+      pinMode(axes[i].limit.pin, INPUT_PULLUP);
+    }
+    if (axes[i].home.pin != UNDEFINED_PIN) {
+      pinInUse[axes[i].home.pin] = true;
+      pinMode(axes[i].home.pin, INPUT_PULLUP);
+    }
   }
 }
 
@@ -84,6 +104,19 @@ void loop() {
     }
   }
 
+  if(block.m == 42) {
+    int p = bitRead(block.words, WORD_P) ? block.values[WORD_P] : LED_BUILTIN;
+    int s = bitRead(block.words, WORD_S) ? block.values[WORD_S] : 255;
+    if (p >= sizeof(pinInUse) || pinInUse[p]) {
+      Serial.print("[ERROR] Pin '");
+      Serial.print(p);
+      Serial.print("' is not available.");
+    } else {
+      pinMode(p, OUTPUT);
+      analogWrite(p, s);
+    }
+  }
+
   if(block.m == 114) {
     for(unsigned char i = 0; i < 6; i = i + 1) {
       Serial.print(axes[i].id);
@@ -110,6 +143,21 @@ void loop() {
       Serial.print(" ");
     }
     Serial.println();
+  }
+
+  if(block.m == 226) {
+    int p = bitRead(block.words, WORD_P) ? block.values[WORD_P] : LED_BUILTIN;
+    int s = bitRead(block.words, WORD_S) ? block.values[WORD_S] : -1;
+    if (p >= sizeof(pinInUse) || pinInUse[p]) {
+      Serial.print("[ERROR] Pin '");
+      Serial.print(p);
+      Serial.print("' is not available.");
+    } else {
+      pinMode(p, INPUT);
+      bool state = s < 0 ? !digitalRead(p) : !(state == 0);
+      while (digitalRead(p) != state) {}
+      Serial.print("State changed");
+    }
   }
 }
 
